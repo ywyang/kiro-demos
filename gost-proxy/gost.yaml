@@ -1,0 +1,46 @@
+# Gost 配置文件
+# 文档: https://gost.run/
+
+# API 配置 - 供 Web UI 连接
+api:
+  addr: :18080
+  pathPrefix: /api
+  accessLog: true
+
+# 日志配置
+log:
+  level: info
+  format: json
+
+# 服务配置
+services:
+  # HTTP 代理
+  - name: http-proxy
+    addr: :8080
+    handler:
+      type: http
+      auths:
+        # 默认用户（可通过 Web UI 动态管理）
+        - username: user1
+          password: pass123
+        - username: user2
+          password: pass456
+    listener:
+      type: tcp
+    metadata:
+      readTimeout: 30s
+      writeTimeout: 30s
+
+  # HTTPS 代理（需要配置证书）
+  - name: https-proxy
+    addr: :8443
+    handler:
+      type: http
+      auths:
+        - username: user1
+          password: pass123
+    listener:
+      type: tls
+      tls:
+        certFile: /etc/gost/certs/server.crt
+        keyFile: /etc/gost/certs/server.key
