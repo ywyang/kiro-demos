@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Gost HTTP Proxy for Kiro IDE on Amazon Linux 2023
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3a.micro
+      - t3a.small
+      - t3a.medium
+    Description: EC2 instance type
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: SSH key pair name
+  AllowedCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR allowed to access proxy (recommend restricting to your IP)
+  AdminCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR allowed to access Web UI and API (recommend restricting)
+  ProxyUser:
+    Type: String
+    Default: user1
+    Description: Proxy username
+  ProxyPass:
+    Type: String
+    NoEcho: true
+    Default: pass123
+    Description: Proxy password
+  ApiUser:
+    Type: String
+    Default: admin
+    Description: Gost API username
+  ApiPass:
+    Type: String
+    NoEcho: true
+    Default: changeMe!2024
+    Description: Gost API password
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Gost Proxy Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AdminCIDR
+          Description: SSH
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref AllowedCIDR
+          Description: HTTP Proxy
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: !Ref AdminCIDR
+          Description: Gost Web UI
+        - IpProtocol: tcp
+          FromPort: 18080
+          ToPort: 18080
+          CidrIp: !Ref AdminCIDR
+          Description: Gost API
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      SecurityGroupIds:
+        - !GetAtt SecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          dnf install -y docker git
+          systemctl start docker
+          systemctl enable docker
+
+          # Install docker compose plugin
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          # Create project directory
+          mkdir -p /opt/gost-proxy
+          cd /opt/gost-proxy
+
+          # Write gost.yaml
+          cat > gost.yaml <<'GOSTEOF'
+          api:
+            addr: :18080
+            pathPrefix: /api
+            accessLog: true
+            auth:
+              username: ${ApiUser}
+              password: ${ApiPass}
+          log:
+            level: info
+            format: json
+          services:
+            - name: http-proxy
+              addr: :8080
+              handler:
+                type: http
+                auths:
+                  - username: ${ProxyUser}
+                    password: ${ProxyPass}
+              listener:
+                type: tcp
+                metadata:
+                  readTimeout: 300s
+                  writeTimeout: 300s
+          GOSTEOF
+
+          # Write docker-compose.yml
+          cat > docker-compose.yml <<'COMPEOF'
+          services:
+            gost:
+              image: gogost/gost:latest
+              container_name: gost-proxy
+              restart: unless-stopped
+              ports:
+                - "8080:8080"
+                - "18080:18080"
+              volumes:
+                - ./gost.yaml:/etc/gost/gost.yaml:ro
+              command: -C /etc/gost/gost.yaml
+            gost-ui:
+              image: gogost/gost-ui:latest
+              container_name: gost-web-ui
+              restart: unless-stopped
+              ports:
+                - "3000:80"
+              depends_on:
+                - gost
+          COMPEOF
+
+          # Start services
+          docker compose up -d
+      Tags:
+        - Key: Name
+          Value: gost-proxy
+
+Outputs:
+  PublicIP:
+    Description: Instance public IP
+    Value: !GetAtt Instance.PublicIp
+  ProxyEndpoint:
+    Description: Proxy endpoint for Kiro
+    Value: !Sub 'http://${ProxyUser}:${ProxyPass}@${Instance.PublicIp}:8080'
+  WebUI:
+    Description: Gost Web UI
+    Value: !Sub 'http://${Instance.PublicIp}:3000'
+  KiroConfig:
+    Description: Set these env vars to use with Kiro CLI
+    Value: !Sub |
+      export HTTP_PROXY=http://${ProxyUser}:${ProxyPass}@${Instance.PublicIp}:8080
+      export HTTPS_PROXY=http://${ProxyUser}:${ProxyPass}@${Instance.PublicIp}:8080

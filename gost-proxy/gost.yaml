@@ -6,6 +6,9 @@ api:
   addr: :18080
   pathPrefix: /api
   accessLog: true
+  auth:
+    username: admin
+    password: changeMe!2024
 
 # 日志配置
 log:
@@ -14,33 +17,18 @@ log:
 
 # 服务配置
 services:
-  # HTTP 代理
+  # HTTP 代理（支持 HTTP CONNECT 隧道，适用于 Kiro IDE）
   - name: http-proxy
     addr: :8080
     handler:
       type: http
       auths:
-        # 默认用户（可通过 Web UI 动态管理）
         - username: user1
           password: pass123
         - username: user2
           password: pass456
     listener:
       type: tcp
-    metadata:
-      readTimeout: 30s
-      writeTimeout: 30s
-
-  # HTTPS 代理（需要配置证书）
-  - name: https-proxy
-    addr: :8443
-    handler:
-      type: http
-      auths:
-        - username: user1
-          password: pass123
-    listener:
-      type: tls
-      tls:
-        certFile: /etc/gost/certs/server.crt
-        keyFile: /etc/gost/certs/server.key
+      metadata:
+        readTimeout: 300s
+        writeTimeout: 300s

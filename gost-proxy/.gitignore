@@ -1,15 +1,6 @@
 # 依赖目录
 node_modules/
 
-# 数据目录
-data/
-
-# SSL 证书（建议不要提交）
-certs/
-*.key
-*.crt
-*.pem
-
 # 环境变量
 .env
 

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Gost 代理服务
   gost:
@@ -7,13 +5,10 @@ services:
     container_name: gost-proxy
     restart: unless-stopped
     ports:
-      - "8080:8080"    # HTTP 代理端口
-      - "8443:8443"    # HTTPS 代理端口
-      - "18080:18080"  # API 端口（供 Web UI 连接）
+      - "${HTTP_PROXY_PORT:-8080}:8080"
+      - "${GOST_API_PORT:-18080}:18080"
     volumes:
       - ./gost.yaml:/etc/gost/gost.yaml:ro
-      - ./certs:/etc/gost/certs:ro
-      - ./data:/var/lib/gost
     command: -C /etc/gost/gost.yaml
     networks:
       - proxy-network
@@ -24,7 +19,7 @@ services:
     container_name: gost-web-ui
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "${GOST_UI_PORT:-3000}:80"
     networks:
       - proxy-network
     depends_on:
