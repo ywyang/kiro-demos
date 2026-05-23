@@ -1,0 +1,24 @@
+services:
+  gost:
+    image: gogost/gost:latest
+    container_name: gost-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "18080:18080"
+    volumes:
+      - ./gost.yaml:/etc/gost/gost.yaml:ro
+    command: -C /etc/gost/gost.yaml
+  gost-ui-orig:
+    image: gogost/gost-ui:latest
+    container_name: gost-ui-orig
+    restart: unless-stopped
+  gost-ui:
+    image: gost-webui:local
+    container_name: gost-web-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - gost
+      - gost-ui-orig
