@@ -217,7 +217,7 @@ async function delUser(username){
 }
 
 function genPass(){
-  const chars='abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+  const chars='abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let p='';for(let i=0;i<16;i++)p+=chars[Math.floor(Math.random()*chars.length)];
   return p;
 }
