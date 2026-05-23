@@ -1,16 +1,17 @@
 # Gost HTTP 代理服务器（Kiro IDE 代理）
 
-基于 Docker 的 Gost 代理服务器，为 Kiro IDE/CLI 提供 HTTP 代理服务，使用官方 Gost UI 进行可视化管理。
+基于 Docker 的 Gost 代理服务器，为 Kiro IDE/CLI 提供 HTTP 代理服务，内置自定义用户管理 WebUI 和域名白名单。
 
 ---
 
 ## ✨ 功能特性
 
-- 🔐 **用户认证** - 支持多用户管理，独立密码
-- 🌐 **HTTP 代理** - 支持 HTTP CONNECT 隧道（Kiro 所需）
-- 📊 **官方 Web UI** - 使用 [Gost UI](https://github.com/go-gost/gost-ui) 可视化管理
-- 🐳 **Docker 部署** - 一键启动，方便迁移
-- 🔧 **动态配置** - 通过 Web UI 动态管理用户和服务
+- 🔐 **用户管理 WebUI** - 添加/删除用户、修改密码、重置密码、批量创建
+- 🌐 **域名白名单** - 仅放行 Kiro 所需域名，其余拒绝
+- 📥 **用户导出** - 导出 CSV（用户名、密码、Kiro 配置）
+- 🖥️ **原版 UI** - 同时保留 Gost 官方管理界面
+- 🐳 **一键部署** - CloudFormation 模板，开箱即用
+- 🔒 **安全加固** - SSH 端口关闭、API 端口不对外、EIP 固定 IP
 
 ---
 
@@ -18,165 +19,119 @@
 
 ```
 gost-proxy/
-├── docker-compose.yml      # Docker 编排配置
-├── gost.yaml              # Gost 代理配置
-├── .env.example           # 环境变量示例
-├── DEPLOYMENT.md          # 详细部署文档 (Amazon Linux 2023)
-└── README.md              # 本文件
+├── cloudformation.yaml     # AWS CloudFormation 部署模板
+├── webui/
+│   ├── Dockerfile          # 自定义 WebUI 镜像
+│   ├── index.html          # 用户管理页面
+│   └── default.conf        # Nginx 配置（反代 API + 原版 UI）
+├── test/
+│   ├── docker-compose.yml  # 本地测试编排
+│   └── gost.yaml           # 本地测试配置
+└── README.md
 ```
 
 ---
 
-## 🚀 快速开始
+## 🚀 快速部署（CloudFormation）
 
-### 1. 前置要求
-
-- Docker 20.10+
-- Docker Compose V2
-
-### 2. 克隆项目
+### 一键部署
 
 ```bash
-git clone https://github.com/ywyang/kiro-demos.git
-cd kiro-demos/gost-proxy
+aws cloudformation create-stack \
+  --stack-name gost-proxy \
+  --template-body file://cloudformation.yaml \
+  --parameters \
+    ParameterKey=InstanceType,ParameterValue=t3.large \
+    ParameterKey=KeyPairName,ParameterValue=<your-keypair> \
+  --region us-east-1
 ```
 
-### 3. 配置环境变量
+### 部署参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| InstanceType | t3.large | EC2 实例类型 |
+| KeyPairName | - | SSH 密钥对 |
+| AllowedCIDR | 0.0.0.0/0 | 允许访问代理的 CIDR |
+| AdminCIDR | 0.0.0.0/0 | 允许访问 WebUI 的 CIDR |
+| ProxyUser | user1 | 代理用户名 |
+| ProxyPass | pass123 | 代理密码 |
+| ApiUser | admin | WebUI 管理员用户名 |
+| ApiPass | Kir0@Gost2026!Proxy | WebUI 管理员密码 |
+
+### 部署输出
+
+| 输出 | 说明 |
+|------|------|
+| PublicIP | EIP 固定公网 IP |
+| WebUI | 用户管理界面 (`:3000`) |
+| WebUIOriginal | 原版 Gost UI (`:3000/ui/`) |
+| ProxyEndpoint | 代理地址 |
+| KiroConfig | Kiro CLI 环境变量配置 |
+
+---
+
+## 🖥️ 本地测试
 
 ```bash
-cp .env.example .env
-# 编辑 .env 修改 API 认证密码（可选）
-```
-
-### 4. 启动服务
-
-```bash
+cd test/
 docker compose up -d
+# 访问 http://localhost:3000
 ```
-
-### 5. 访问服务
-
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| **Gost UI** | http://localhost:3000 | Web 管理界面 |
-| HTTP 代理 | localhost:8080 | HTTP/HTTPS 代理（CONNECT 隧道） |
 
 ---
 
-## 🖥️ 配置 Kiro IDE/CLI 使用代理
+## 🌐 域名白名单
 
-### 环境变量方式
-
-```bash
-export HTTP_PROXY=http://user1:pass123@代理服务器IP:8080
-export HTTPS_PROXY=http://user1:pass123@代理服务器IP:8080
-```
-
-然后启动 Kiro CLI：
-
-```bash
-kiro-cli chat
-```
-
-### 持久化配置（写入 shell profile）
-
-```bash
-echo 'export HTTP_PROXY=http://user1:pass123@代理服务器IP:8080' >> ~/.bashrc
-echo 'export HTTPS_PROXY=http://user1:pass123@代理服务器IP:8080' >> ~/.bashrc
-source ~/.bashrc
-```
-
-> ⚠️ **注意**: Kiro 登录时会打开浏览器访问 `app.kiro.dev`，浏览器流量不走 CLI 代理。确保浏览器所在网络能直接访问 `app.kiro.dev`。
-
----
-
-## 📖 使用 Web UI 管理
-
-### 连接到 Gost
-
-1. 打开 http://localhost:3000
-2. 填写连接信息：
-   - **API 地址**: `http://服务器IP:18080`
-   - **用户名**: `admin`（见 `gost.yaml` 中 `api.auth.username`）
-   - **密码**: 你设置的密码（见 `gost.yaml` 中 `api.auth.password`）
-3. 点击 **连接** 按钮
-
-> 💡 **提示**: 也可以使用官方在线 UI: https://ui.gost.run
-
----
-
-## 🌐 Kiro 需要访问的域名
-
-代理服务器需要能访问以下域名（出站）：
+代理仅放行以下 Kiro 所需域名，其余域名被拒绝：
 
 | 域名 | 用途 |
 |------|------|
 | `*.kiro.dev` | Kiro 核心服务 |
-| `q.us-east-1.amazonaws.com` | Kiro 服务 (US East) |
-| `q.eu-central-1.amazonaws.com` | Kiro 服务 (Europe) |
+| `q.us-east-1.amazonaws.com` | Kiro 服务 (US) |
+| `q.eu-central-1.amazonaws.com` | Kiro 服务 (EU) |
 | `cognito-identity.us-east-1.amazonaws.com` | 社交登录 |
+| `*.signin.aws` | AWS 登录 |
+| `*.awsapps.com` | IAM Identity Center |
+| `portal.sso.us-east-1.amazonaws.com` | SSO 门户 |
+| `oidc.us-east-1.amazonaws.com` | OIDC Token |
+| `login.microsoftonline.com` | Entra ID |
+| `open-vsx.org` / `*.eclipsecontent.org` | 扩展 |
+| `github.com` / `raw.githubusercontent.com` | Powers/MCP |
+| `billing.stripe.com` / `checkout.stripe.com` | 订阅管理 |
 
-完整列表参考: [Kiro 防火墙配置文档](https://kiro.dev/docs/cli/privacy-and-security/firewalls/)
+参考: [Kiro 防火墙配置文档](https://kiro.dev/docs/privacy-and-security/firewalls/)
 
 ---
 
-## 🛠️ 管理命令
+## 🔧 配置 Kiro 使用代理
 
 ```bash
-# 查看状态
-docker compose ps
-
-# 查看日志
-docker compose logs -f gost
-
-# 重启服务
-docker compose restart
-
-# 停止服务
-docker compose down
-
-# 更新镜像
-docker compose pull && docker compose up -d
+export HTTP_PROXY=http://user1:pass123@<EIP>:8080
+export HTTPS_PROXY=http://user1:pass123@<EIP>:8080
 ```
 
----
-
-## 📝 默认用户
-
-配置文件 `gost.yaml` 中预置了测试用户：
-
-| 用户名 | 密码 |
-|--------|------|
-| user1 | pass123 |
-| user2 | pass456 |
-
-> ⚠️ **生产环境建议**: 通过 Web UI 修改或删除默认用户
+> ⚠️ Kiro 登录时浏览器流量不走代理，确保浏览器能直接访问 `app.kiro.dev`。
 
 ---
 
-## 🔒 安全建议
+## 🔒 安全配置
 
-1. **修改默认用户密码**
-2. **修改 API 认证密码**（`gost.yaml` 中的 `api.auth`）
-3. **限制 API 端口访问**（仅允许管理 IP 访问 18080 端口）
-4. **定期更新镜像**
+- **SSH 端口**: 安全组不开放（密钥对保留，需要时手动添加规则）
+- **API 端口 (18080)**: 不对外开放，仅容器内部通信
+- **WebUI (3000)**: 通过 AdminCIDR 限制访问
+- **代理 (8080)**: 通过 AllowedCIDR 限制访问
 
 ---
 
-## 📖 详细部署文档
+## 🐳 Docker 镜像
 
-完整部署指南（Amazon Linux 2023）请查看: [DEPLOYMENT.md](./DEPLOYMENT.md)
+自定义 WebUI 镜像: [`aiworkspaces/gost-webui:latest`](https://hub.docker.com/r/aiworkspaces/gost-webui)
 
 ---
 
 ## 📚 相关链接
 
 - [Gost 官方文档](https://gost.run/)
-- [Gost UI 项目](https://github.com/go-gost/gost-ui)
-- [Kiro 代理配置文档](https://kiro.dev/docs/cli/privacy-and-security/firewalls/)
-
----
-
-## 📄 许可证
-
-MIT License
+- [Kiro 防火墙配置](https://kiro.dev/docs/privacy-and-security/firewalls/)
+- [Docker Hub 镜像](https://hub.docker.com/r/aiworkspaces/gost-webui)
