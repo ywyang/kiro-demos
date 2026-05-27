@@ -160,12 +160,25 @@ Resources:
                 - "8080:8080"
                 - "18080:18080"
               volumes:
-                - ./gost.yaml:/etc/gost/gost.yaml:ro
+                - ./gost.yaml:/etc/gost/gost.yaml
               command: -C /etc/gost/gost.yaml
             gost-ui-orig:
               image: gogost/gost-ui:latest
               container_name: gost-ui-orig
               restart: unless-stopped
+            config-saver:
+              image: aiworkspaces/gost-config-saver:latest
+              container_name: config-saver
+              restart: unless-stopped
+              environment:
+                - GOST_API=http://gost:18080/api
+                - GOST_USER=${ApiUser}
+                - GOST_PASS=${ApiPass}
+                - CONFIG_FILE=/data/gost.yaml
+              volumes:
+                - ./gost.yaml:/data/gost.yaml
+              depends_on:
+                - gost
             gost-ui:
               image: aiworkspaces/gost-webui:latest
               container_name: gost-web-ui
@@ -175,6 +188,7 @@ Resources:
               depends_on:
                 - gost
                 - gost-ui-orig
+                - config-saver
           COMPEOF
 
           # Start services

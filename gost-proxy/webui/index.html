@@ -95,6 +95,9 @@ textarea{resize:vertical}
 <script>
 let apiBase='',authHeader='',autherName='',proxyHost='';
 
+function saveConfig(){fetch('/save-config').catch(()=>{});}
+
+
 document.getElementById('connForm').onsubmit=async e=>{
   e.preventDefault();
   apiBase=document.getElementById('apiAddr').value.replace(/\/$/,'');
@@ -154,6 +157,7 @@ async function addUser(){
   auths.push({username:u,password:p});
   const up=await api('/config/authers/'+autherName,{method:'PUT',body:JSON.stringify({name:autherName,auths})});
   if(up.ok){
+    saveConfig();
     showStatus('addStatus','ok','✓ 已添加');
     document.getElementById('newUser').value='';
     document.getElementById('newPass').value='';
@@ -179,6 +183,7 @@ async function batchCreate(){
   if(!added)return showStatus('batchStatus','err','没有新用户可添加');
   const up=await api('/config/authers/'+autherName,{method:'PUT',body:JSON.stringify({name:autherName,auths})});
   if(up.ok){
+    saveConfig();
     showStatus('batchStatus','ok',`✓ 已批量添加 ${added} 个用户`);
     document.getElementById('batchInput').value='';
     loadUsers();
@@ -213,7 +218,7 @@ async function delUser(username){
   const res=await r.json();
   const auths=(res.data&&res.data.auths||[]).filter(a=>a.username!==username);
   const up=await api('/config/authers/'+autherName,{method:'PUT',body:JSON.stringify({name:autherName,auths})});
-  if(up.ok)loadUsers();
+  if(up.ok){saveConfig();loadUsers();}
 }
 
 function genPass(){
@@ -232,7 +237,7 @@ async function updatePass(username,newPass){
   if(!auth)return;
   auth.password=newPass;
   const up=await api('/config/authers/'+autherName,{method:'PUT',body:JSON.stringify({name:autherName,auths})});
-  return up.ok;
+  return up.ok?(saveConfig(),true):false;
 }
 
 async function changePass(username){
