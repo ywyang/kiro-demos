@@ -49,6 +49,20 @@ Parameters:
     NoEcho: true
     Default: Kir0@Gost2026!Proxy
     Description: Gost API password (high strength)
+  SSORegion:
+    Type: String
+    Default: us-east-1
+    Description: The AWS Region where your identity center instance is enabled.
+  EnableWhitelist:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable Kiro whitelist (false = proxy all traffic)
+
+Conditions:
+  UseWhitelist: !Equals [!Ref EnableWhitelist, 'true']
 
 Resources:
   EIP:
@@ -81,118 +95,129 @@ Resources:
       SecurityGroupIds:
         - !GetAtt SecurityGroup.GroupId
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          dnf install -y docker
-          systemctl start docker
-          systemctl enable docker
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              #!/bin/bash
+              dnf install -y docker
+              systemctl start docker
+              systemctl enable docker
 
-          # Install docker compose plugin
-          mkdir -p /usr/local/lib/docker/cli-plugins
-          curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
-          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+              # Install docker compose plugin
+              mkdir -p /usr/local/lib/docker/cli-plugins
+              curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+              chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
-          # Create project directory
-          mkdir -p /opt/gost-proxy
-          cd /opt/gost-proxy
+              # Create project directory
+              mkdir -p /opt/gost-proxy
+              cd /opt/gost-proxy
 
-          # Write gost.yaml
-          cat > gost.yaml <<'GOSTEOF'
-          api:
-            addr: :18080
-            pathPrefix: /api
-            accessLog: true
-            auth:
-              username: ${ApiUser}
-              password: ${ApiPass}
-          log:
-            level: info
-            format: json
-          authers:
-            - name: proxy-auth
-              auths:
-                - username: ${ProxyUser}
-                  password: ${ProxyPass}
-          bypasses:
-            - name: kiro-whitelist
-              reverse: true
-              matchers:
-                - .kiro.dev
-                - .app.kiro.dev
-                - q.us-east-1.amazonaws.com
-                - q.eu-central-1.amazonaws.com
-                - cognito-identity.us-east-1.amazonaws.com
-                - .signin.aws
-                - .signin.aws.amazon.com
-                - .awsapps.com
-                - portal.sso.us-east-1.amazonaws.com
-                - assets.sso-portal.us-east-1.amazonaws.com
-                - oidc.us-east-1.amazonaws.com
-                - login.microsoftonline.com
-                - open-vsx.org
-                - .eclipsecontent.org
-                - github.com
-                - raw.githubusercontent.com
-                - billing.stripe.com
-                - checkout.stripe.com
-          services:
-            - name: http-proxy
-              addr: :8080
-              handler:
-                type: http
-                auther: proxy-auth
-              listener:
-                type: tcp
-                metadata:
-                  readTimeout: 300s
-                  writeTimeout: 300s
-              bypass: kiro-whitelist
-          GOSTEOF
+              # Write gost.yaml
+              cat > gost.yaml <<'GOSTEOF'
+              api:
+                addr: :18080
+                pathPrefix: /api
+                accessLog: true
+                auth:
+                  username: ${ApiUser}
+                  password: ${ApiPass}
+              log:
+                level: info
+                format: json
+              authers:
+                - name: proxy-auth
+                  auths:
+                    - username: ${ProxyUser}
+                      password: ${ProxyPass}
+              bypasses:
+                - name: kiro-whitelist
+                  reverse: true
+                  matchers:
+                    - .kiro.dev
+                    - .app.kiro.dev
+                    - q.us-east-1.amazonaws.com
+                    - q.eu-central-1.amazonaws.com
+                    - cognito-identity.us-east-1.amazonaws.com
+                    - .signin.aws
+                    - .signin.aws.amazon.com
+                    - .awsapps.com
+                    - portal.sso.${SSORegion}.amazonaws.com
+                    - assets.sso-portal.${SSORegion}.amazonaws.com
+                    - oidc.${SSORegion}.amazonaws.com
+                    - login.microsoftonline.com
+                    - open-vsx.org
+                    - .eclipsecontent.org
+                    - github.com
+                    - raw.githubusercontent.com
+                    - billing.stripe.com
+                    - checkout.stripe.com
+              services:
+                - name: http-proxy
+                  addr: :8080
+                  handler:
+                    type: http
+                    auther: proxy-auth
+                  listener:
+                    type: tcp
+                    metadata:
+                      readTimeout: 300s
+                      writeTimeout: 300s
+                  ${BypassLine}
+              GOSTEOF
 
-          # Write docker-compose.yml
-          cat > docker-compose.yml <<'COMPEOF'
-          services:
-            gost:
-              image: gogost/gost:latest
-              container_name: gost-proxy
-              restart: unless-stopped
-              ports:
-                - "8080:8080"
-                - "18080:18080"
-              volumes:
-                - ./gost.yaml:/etc/gost/gost.yaml
-              command: -C /etc/gost/gost.yaml
-            gost-ui-orig:
-              image: gogost/gost-ui:latest
-              container_name: gost-ui-orig
-              restart: unless-stopped
-            config-saver:
-              image: aiworkspaces/gost-config-saver:latest
-              container_name: config-saver
-              restart: unless-stopped
-              environment:
-                - GOST_API=http://gost:18080/api
-                - GOST_USER=${ApiUser}
-                - GOST_PASS=${ApiPass}
-                - CONFIG_FILE=/data/gost.yaml
-              volumes:
-                - ./gost.yaml:/data/gost.yaml
-              depends_on:
-                - gost
-            gost-ui:
-              image: aiworkspaces/gost-webui:latest
-              container_name: gost-web-ui
-              restart: unless-stopped
-              ports:
-                - "3000:80"
-              depends_on:
-                - gost
-                - gost-ui-orig
-                - config-saver
-          COMPEOF
+              # Write docker-compose.yml
+              cat > docker-compose.yml <<'COMPEOF'
+              services:
+                gost:
+                  image: gogost/gost:latest
+                  pull_policy: always
+                  container_name: gost-proxy
+                  restart: unless-stopped
+                  ports:
+                    - "8080:8080"
+                    - "18080:18080"
+                  volumes:
+                    - ./gost.yaml:/etc/gost/gost.yaml
+                  command: -C /etc/gost/gost.yaml
+                gost-ui-orig:
+                  image: gogost/gost-ui:latest
+                  pull_policy: always
+                  container_name: gost-ui-orig
+                  restart: unless-stopped
+                config-saver:
+                  # image: aiworkspaces/gost-config-saver:latest
+                  image: mingzhang860612/gost-config-saver:latest
+                  pull_policy: always
+                  container_name: config-saver
+                  restart: unless-stopped
+                  environment:
+                    - GOST_API=http://gost:18080/api
+                    - GOST_USER=${ApiUser}
+                    - GOST_PASS=${ApiPass}
+                    - CONFIG_FILE=/data/gost.yaml
+                  volumes:
+                    - ./gost.yaml:/data/gost.yaml
+                  depends_on:
+                    - gost
+                gost-ui:
+                  image: aiworkspaces/gost-webui:latest
+                  pull_policy: always
+                  container_name: gost-web-ui
+                  restart: unless-stopped
+                  ports:
+                    - "3000:80"
+                  depends_on:
+                    - gost
+                    - gost-ui-orig
+                    - config-saver
+              COMPEOF
 
-          # Start services
-          docker compose up -d
+              # Start services
+              docker compose up -d
+            - BypassLine: !If
+                - UseWhitelist
+                - 'bypass: kiro-whitelist'
+                - ''
       Tags:
         - Key: Name
           Value: gost-proxy
