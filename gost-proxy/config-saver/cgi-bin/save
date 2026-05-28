@@ -39,7 +39,8 @@ yq -n "
 " > "$tmp"
 
 if [ $? -eq 0 ] && [ -s "$tmp" ]; then
-  mv "$tmp" "$CONFIG_FILE"
+  # 解决异常： mv: can't rename '/tmp/gost-new-8.yaml': Resource busy
+  cat "$tmp" > "$CONFIG_FILE" && rm -f "$tmp"
   echo "OK: Config saved at $(date -Iseconds)"
 else
   rm -f "$tmp"
