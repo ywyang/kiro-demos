@@ -135,3 +135,9 @@ export HTTPS_PROXY=http://user1:pass123@<EIP>:8080
 - [Gost 官方文档](https://gost.run/)
 - [Kiro 防火墙配置](https://kiro.dev/docs/privacy-and-security/firewalls/)
 - [Docker Hub 镜像](https://hub.docker.com/r/aiworkspaces/gost-webui)
+
+---
+
+## 🙏 致谢
+
+This project uses [GOST](https://github.com/go-gost/gost) (MIT License, Copyright (c) 2016 ginuerzh)

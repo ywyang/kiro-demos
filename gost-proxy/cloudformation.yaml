@@ -185,8 +185,7 @@ Resources:
                   container_name: gost-ui-orig
                   restart: unless-stopped
                 config-saver:
-                  # image: aiworkspaces/gost-config-saver:latest
-                  image: mingzhang860612/gost-config-saver:latest
+                  image: aiworkspaces/gost-config-saver:latest
                   pull_policy: always
                   container_name: config-saver
                   restart: unless-stopped
